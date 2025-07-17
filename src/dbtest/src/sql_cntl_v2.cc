@@ -23,17 +23,21 @@
  */
 std::string get_current_time(){
 
-    // date
+    // date   
+    //获取当前日期和时间
     time_t d = time(0);
     tm* d_now = std::localtime(&d);
 
     // time
+    //使用chrono获取更高精度的时间（纳秒级）
     std::chrono::time_point<std::chrono::system_clock> now = std::chrono::system_clock::now();
     auto duration = now.time_since_epoch();
 
+    //定义UTC+8时区（注释中未实际使用）
     typedef std::chrono::duration<int, std::ratio_multiply<std::chrono::hours::period, std::ratio<8>
     >::type> Days; /* UTC: +8:00 */
 
+    //分解时间单位（天、小时、分钟、秒、毫秒、微秒、纳秒）
     Days days = std::chrono::duration_cast<Days>(duration);
         duration -= days;
     auto hours = std::chrono::duration_cast<std::chrono::hours>(duration);
@@ -48,7 +52,7 @@ std::string get_current_time(){
         duration -= microseconds;
     auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration);
 
-
+    //返回格式化字符串（注意：实际未使用纳秒部分）
     // return std::to_string(hours.count()) +':'+ std::to_string(minutes.count()) +":"+ std::to_string(seconds.count())+":"
     //         + std::to_string(milliseconds.count()) +":"+ std::to_string(microseconds.count()) +":"+ std::to_string(nanoseconds.count());
     return  std::to_string(d_now->tm_year + 1900) + "-" + std::to_string(d_now->tm_mon + 1) + "-" + std::to_string(d_now->tm_mday) 
@@ -61,19 +65,23 @@ std::string get_current_time(){
 /**
  * Replace all occurrences of a substring 'from' with another substring 'to' in a given string.
  * 
- * @param str The input string in which replacements will be made.
- * @param from The substring to search for and replace.
- * @param to The replacement substring.
+ * @param str The input string in which replacements will be made.输入字符串，替换操作的目标
+ * @param from The substring to search for and replace.需要被替换的子串
+ * @param to The replacement substring.替换后的新子串
  * @return True if at least one replacement was made, false otherwise.
- * 
+ * True：如果至少发生一次替换
+ * False：如果没有找到from子串（即为替换）
  * @note The code is the same as the corresponding function in sql_cntl.cc.
+ * 此函数与另一个文件（sql_cntl.cc）中的同名函数代码完全一致，可能是为了复用或保持逻辑统一
  */
+//替换字符串str中第一次出现的子串from为to
+//返回值：是否成功替换
 bool replace(std::string& str, const std::string& from, const std::string& to) {
-    size_t start_pos = str.find(from);
-    if(start_pos == std::string::npos)
-        return false;
-    str.replace(start_pos, from.length(), to);
-    return true;
+    size_t start_pos = str.find(from);      // 查找子串 'from' 的位置
+    if(start_pos == std::string::npos)      //如果未找到
+        return false;                       //返回 false
+    str.replace(start_pos, from.length(), to);  //替换为 'to'
+    return true;                            //返回 true（至少替换一次）
 }
 
 /**
@@ -84,6 +92,7 @@ bool replace(std::string& str, const std::string& from, const std::string& to) {
  * 
  * @note The code is the same as the corresponding function in sql_cntl.cc.
  */
+//将 SQLCHAR*（ODBC 中的字符类型）转换为 std::string
 std::string SQLCHARToStr(SQLCHAR* ch) {
     char* ch_char = (char*)ch;
     std::string ch_str = ch_char;
@@ -93,23 +102,51 @@ std::string SQLCHARToStr(SQLCHAR* ch) {
 /**
  * Retrieves error information from an ODBC handle (either a statement or a database connection) 
  * and stores it in the provided arrays.
- * 
+ * "stmt"：表示 SQL 语句句柄（SQL_HANDLE_STMT）
+ * "dbc"：表示 数据库连接句柄（SQL_HANDLE_DBC）
  * @param handle_type A string indicating the handle type. It can be "stmt" (for statement handle) or "dbc" (for database connection handle).
  * @param handle The specific handle, which can be either a statement handle or a database connection handle depending on handle_type.
+ * 具体的 ODBC 句柄，根据 handle_type 决定是语句句柄还是连接句柄
  * @param ErrInfo A SQLCHAR array to store the retrieved error information.
+ * 用于存储错误描述信息的 SQLCHAR 数组（通常是 char[] 或 unsigned char[]）
  * @param SQLState A SQLCHAR array to store the retrieved SQL state.
- * 
+ * 用于存储 SQL 状态码（如 "42000" 表示语法错误）的 SQLCHAR 数组
  * @note The code is the same as the corresponding function in sql_cntl.cc.
+ * 此函数与 sql_cntl.cc 文件中的同名函数代码一致，可能是为了复用或保持逻辑统一
  */
 // handle_type: stmt and dbc
+
+//ODBC错误信息提取，根据handle_type（stmt/dbc）调用SQLGetDiagRec提取ODBC错误信息，填充ErrInfo和SQLState。
+//根据 handle_type（"stmt" 或 "dbc"），调用 SQLGetDiagRec 获取 ODBC 错误信息
 void DBConnector::ErrInfoWithStmt(std::string handle_type, SQLHANDLE& handle, SQLCHAR ErrInfo[], SQLCHAR SQLState[]) { 
-    SQLINTEGER NativeErrorPtr = 0;
-    SQLSMALLINT TextLengthPtr = 0;
-    if ("stmt" == handle_type) {
-        SQLGetDiagRec(SQL_HANDLE_STMT, handle, 1, SQLState, &NativeErrorPtr, ErrInfo, 256, &TextLengthPtr);
-    }
-    if ("dbc" == handle_type) {
-        SQLGetDiagRec(SQL_HANDLE_DBC, handle, 1, SQLState, &NativeErrorPtr, ErrInfo, 256, &TextLengthPtr);
+    SQLINTEGER NativeErrorPtr = 0;      //用于存储数据库特定的错误码（如 SQL Server 的错误号）
+    SQLSMALLINT TextLengthPtr = 0;      //用于存储错误信息的实际长度
+     if ("stmt" == handle_type) {
+        // 如果是语句句柄，调用 SQLGetDiagRec 获取错误信息，ODBC API，用于从句柄中获取诊断信息（错误信息）
+        SQLGetDiagRec(          
+            SQL_HANDLE_STMT,  // 句柄类型：语句句柄，SQL_HANDLE_STMT（语句句柄）或 SQL_HANDLE_DBC（连接句柄）
+            handle,           // 具体的语句ODBC句柄
+            1,                // 错误记录索引（通常取第一条错误）
+            SQLState,         // 输出：SQL 状态码（如 "23000" 表示完整性约束冲突）
+            &NativeErrorPtr,  // 输出：数据库特定的错误码，如 SQL Server 的 -1073548784
+            ErrInfo,          // 输出：错误描述信息，如 "Syntax error near 'FROM'
+            256,              // 缓冲区大小（ErrInfo 的长度）
+            &TextLengthPtr    // 输出：实际写入的字符数
+        );
+    }       //分支逻辑，根据 handle_type 决定调用 SQLGetDiagRec 的方式："stmt" → 语句句柄，"dbc" → 连接句柄
+   if ("dbc" == handle_type) {
+        // 如果是连接句柄，调用 SQLGetDiagRec 获取错误信息
+        //缓冲区大小，ErrInfo 的缓冲区大小固定为 256，确保不会溢出
+        SQLGetDiagRec(
+            SQL_HANDLE_DBC,   // 句柄类型：连接句柄
+            handle,           // 具体的连接句柄
+            1,                // 错误记录索引
+            SQLState,         // 输出：SQL 状态码
+            &NativeErrorPtr,  // 输出：数据库特定的错误码
+            ErrInfo,          // 输出：错误描述信息
+            256,              // 缓冲区大小
+            &TextLengthPtr    // 输出：实际写入的字符数
+        );
     }
 }
 
@@ -123,18 +160,27 @@ void DBConnector::ErrInfoWithStmt(std::string handle_type, SQLHANDLE& handle, SQ
  * such as "not exist" errors and "ROLLBACK TRANSACTION" errors.
  *
  * @param session_id The session ID associated with the SQL query.
+ * 会话 ID，用于标识当前数据库会话
  * @param sql_id The ID of the SQL query.
+ * SQL 语句的 ID，用于标识具体的 SQL 操作
  * @param sql The SQL query that caused the error.
+ * 导致错误的 SQL 语句
  * @param handle_type The type of ODBC handle (e.g., "stmt" or "dbc").
+ * ODBC 句柄类型（"stmt" 或 "dbc"）
  * @param handle The ODBC handle associated with the error.
+ * 具体的 ODBC 句柄
  * @param ret The return code from the SQL execution.
+ * SQL 执行返回码
  * @param test_process_file The output file for logging error information.
+ * 日志文件路径，用于记录错误信息
  * @return A string containing the error information, or an empty string if no error occurred.
- * 
+ * 返回值：错误信息字符串（如果无错误，返回空字符串）
  * @note The code is different from the corresponding function in sql_cntl.cc.
  */
+
+//SQL执行错误处理，处理 SQL 执行错误，记录错误信息到日志文件和控制台
 std::string DBConnector::SqlExecuteErr(int session_id, int sql_id, const std::string& sql, std::string handle_type, SQLHANDLE& handle, SQLRETURN ret, std::string test_process_file) {
-    
+    //以追加模式（std::ios::app）打开日志文件 test_process_file，用于记录错误信息
     std::ofstream test_process(test_process_file, std::ios::app);
     std::string blank(blank_base*(session_id - 1), ' ');
     if (ret == SQL_SUCCESS || ret == SQL_SUCCESS_WITH_INFO) {
